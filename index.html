@@ -8,7 +8,9 @@
   <meta name="theme-color" content="#f6f4f0" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#151413" media="(prefers-color-scheme: dark)">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗾</text></svg>">
-  <link rel="stylesheet" href="assets/styles.css">
+  <!-- Load the latest files on every visit (GitHub Pages otherwise lets browsers reuse them for 10 minutes). -->
+  <script>window.__v = Date.now(); document.write('<link rel="stylesheet" href="assets/styles.css?v=' + window.__v + '">');</script>
+  <noscript><link rel="stylesheet" href="assets/styles.css"></noscript>
 </head>
 <body>
   <div class="app" id="app">
@@ -101,7 +103,9 @@
   <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Photos and videos" hidden></div>
   <datalist id="placeNames"></datalist>
 
-  <script src="config.js"></script>
-  <script src="assets/app.js"></script>
+  <script>
+    document.write('<script src="config.js?v=' + window.__v + '"><\/script>');
+    document.write('<script src="assets/app.js?v=' + window.__v + '"><\/script>');
+  </script>
 </body>
 </html>

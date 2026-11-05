@@ -77,7 +77,7 @@
   <p class="muted">Uses the Google Maps API key in <code>config.js</code> (needs “Places API (New)” enabled). Each lookup is one Places request.</p>
 </main>
 
-<script src="../config.js"></script>
+<script>document.write('<script src="../config.js?v=' + Date.now() + '"><\/script>');</script>
 <script>
 (() => {
   'use strict';
