@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Place Lookup Helper</title>
+  <meta name="robots" content="noindex">
+  <style>
+    :root { --bg:#f6f4f0; --surface:#fff; --surface-2:#f1ede7; --text:#1f1c19; --muted:#6c655d; --border:#e2dcd3; --accent:#b8322a; --accent-ink:#fff; color-scheme: light; }
+    @media (prefers-color-scheme: dark) { :root { --bg:#151413; --surface:#1e1c1a; --surface-2:#282522; --text:#f3efe9; --muted:#a8a097; --border:#3a3631; --accent:#e5604f; --accent-ink:#1a0f0d; color-scheme: dark; } }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Sans", sans-serif; }
+    main { max-width: 980px; margin: 0 auto; padding: 28px 16px 60px; }
+    h1 { font-size: 24px; margin: 0 0 6px; }
+    p.lead { color: var(--muted); margin: 0 0 20px; }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin-bottom: 16px; }
+    label { font-weight: 600; font-size: 14px; display: block; margin-bottom: 6px; }
+    textarea, input { width: 100%; font: inherit; color: inherit; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+    textarea { min-height: 150px; resize: vertical; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+    .btn { font: inherit; font-weight: 600; border-radius: 10px; padding: 10px 16px; border: 1px solid var(--border); background: var(--surface); color: inherit; cursor: pointer; }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+    .btn:disabled { opacity: .55; cursor: default; }
+    .actions { display: flex; gap: 10px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
+    .muted { color: var(--muted); font-size: 13.5px; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 8px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+    td select { font: inherit; color: inherit; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 4px 6px; max-width: 360px; width: 100%; }
+    .bad { color: var(--accent); font-weight: 600; }
+    code { background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
+    a { color: inherit; }
+    @media (max-width: 640px) { .row { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Place lookup helper</h1>
+  <p class="lead">For you (the curator), not your friends. It finds places on Google Maps and fills in their <b>coordinates</b> and <b>Google place ID</b> (the place ID gives the pop-up a photo and an exact “View in Google Maps” link). Two ways to use it:</p>
+  <ol class="muted" style="margin-top:-8px">
+    <li><b>Fill in your sheet:</b> in your Places tab, select everything (click any cell, press Ctrl/⌘+A), copy, and paste it below. Rows that have no coordinates are looked up; everything else is left exactly as it was.</li>
+    <li><b>Add new places:</b> type place names, one per line, or paste a Google Takeout list export.</li>
+  </ol>
+
+  <div class="panel">
+    <label for="input">Paste your Places tab, or type places one per line</label>
+    <textarea id="input" placeholder="Ichiran Shibuya&#10;Tsurugaoka Hachimangu&#10;Hakone Open-Air Museum&#10;&#10;…or paste the contents of a Google Takeout list CSV (Title, Note, URL)"></textarea>
+    <div class="row" id="newRowFields">
+      <div><label for="area">Area for these rows (optional)</label><input id="area" placeholder="e.g. Kamakura"></div>
+      <div><label for="category">Category for these rows (optional)</label><input id="category" placeholder="e.g. Food"></div>
+    </div>
+    <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin-top:12px" id="onlyShownWrap" hidden>
+      <input type="checkbox" id="onlyShown" checked style="width:auto"> Only look up rows whose <code>show</code> column isn’t “no” (saves lookups)
+    </label>
+    <div class="actions">
+      <button class="btn primary" id="go" type="button">Look up</button>
+      <span class="muted" id="status"></span>
+    </div>
+  </div>
+
+  <div class="panel" id="resultsPanel" hidden>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>You typed</th><th>Best match (change if wrong)</th><th>Coordinates</th></tr></thead>
+        <tbody id="results"></tbody>
+      </table>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="copy" type="button">Copy rows for Google Sheets</button>
+      <span class="muted" id="pasteHint">Then click cell <b>A</b> of the first empty row in your Places tab and paste. Fill in the blanks (type, description, notes…) afterwards.</span>
+    </div>
+    <textarea id="output" readonly style="margin-top:12px;min-height:90px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px"></textarea>
+  </div>
+
+  <p class="muted">Uses the Google Maps API key in <code>config.js</code> (needs “Places API (New)” enabled). Each lookup is one Places request.</p>
+</main>
+
+<script src="../config.js"></script>
+<script>
+(() => {
+  'use strict';
+  const cfg = window.TRIP_CONFIG || {};
+  const $ = (s) => document.querySelector(s);
+  // Same column order as data/places.csv
+  const COLUMNS = ['name', 'area', 'category', 'type', 'coordinates', 'place_id', 'top_pick', 'description', 'notes', 'photo', 'media', 'maps_url'];
+  const JAPAN = { north: 45.8, south: 24.0, east: 154.0, west: 122.8 };
+  let rows = [];
+  let sheet = null; // "fill in" mode: { header, body, idx }
+
+  function parseCSV(text, sep = ',') {
+    const out = []; let row = []; let f = ''; let q = false;
+    const s = text.replace(/^\uFEFF/, '');
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i];
+      if (q) { if (c === '"') { if (s[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+      else if (c === '"' && f === '') q = true;
+      else if (c === sep) { row.push(f); f = ''; }
+      else if (c === '\n') { row.push(f); out.push(row); row = []; f = ''; }
+      else if (c !== '\r') f += c;
+    }
+    if (f !== '' || row.length) { row.push(f); out.push(row); }
+    return out;
+  }
+
+  const normKey = (k) => String(k).trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  const looksLikeSheet = (text) => { const first = text.split('\n')[0].toLowerCase(); return first.includes('\t') && first.split('\t').map(normKey).includes('name'); };
+
+  function readInput() {
+    sheet = null;
+    const text = $('#input').value.replace(/\s+$/, '');
+    if (!text.trim()) return [];
+    if (looksLikeSheet(text)) { // pasted from the Places tab
+      const table = parseCSV(text, '\t');
+      const header = table[0];
+      const keys = header.map(normKey);
+      const col = (...names) => names.map((n) => keys.indexOf(n)).find((i) => i >= 0);
+      const idx = { name: col('name', 'title'), area: col('area'), coordinates: col('coordinates', 'coords'), lat: col('lat', 'latitude'),
+        lng: col('lng', 'lon', 'longitude'), place_id: col('place_id'), show: col('show', 'keep', 'include') };
+      if (idx.coordinates === undefined && (idx.lat === undefined || idx.lng === undefined)) { header.push('coordinates'); idx.coordinates = header.length - 1; }
+      if (idx.place_id === undefined) { header.push('place_id'); idx.place_id = header.length - 1; }
+      const body = table.slice(1).map((r) => { const x = r.slice(); while (x.length < header.length) x.push(''); return x; });
+      sheet = { header, body, idx };
+      const only = $('#onlyShown').checked;
+      const items = [];
+      body.forEach((r, ri) => {
+        const name = (r[idx.name] || '').trim();
+        const has = idx.coordinates !== undefined ? (r[idx.coordinates] || '').trim() : ((r[idx.lat] || '').trim() && (r[idx.lng] || '').trim());
+        const off = idx.show !== undefined && /^(n|no|false|0|off|hide)$/i.test((r[idx.show] || '').trim());
+        if (!name || name.startsWith('#') || has || (only && off)) return;
+        const area = idx.area !== undefined ? (r[idx.area] || '').replace(/[·•]/g, ' ').replace(/\s+/g, ' ').trim() : '';
+        items.push({ query: area && area.toLowerCase() !== 'other' ? `${name}, ${area}` : name, notes: '', row: ri });
+      });
+      return items;
+    }
+    const first = text.split('\n')[0].toLowerCase();
+    if (first.includes('title') && first.includes('url')) { // Google Takeout "Saved" list
+      const table = parseCSV(text);
+      const head = table[0].map((x) => x.trim().toLowerCase());
+      const ti = head.indexOf('title'); const ni = head.indexOf('note');
+      return table.slice(1).filter((r) => (r[ti] || '').trim())
+        .map((r) => ({ query: r[ti].trim(), notes: ni >= 0 ? (r[ni] || '').trim() : '' }));
+    }
+    return text.split('\n').map((l) => l.trim()).filter(Boolean).map((query) => ({ query, notes: '' }));
+  }
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  // One cell for pasting into Google Sheets (quoted if it holds a tab, line break or quote).
+  const cell = (v) => { const s = String(v == null ? '' : v); return /[\t\n"]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const tidy = (v) => String(v == null ? '' : v).replace(/[\t\r\n]+/g, ' ').trim();
+
+  function loadMaps() {
+    return new Promise((resolve, reject) => {
+      if (window.google && google.maps && google.maps.importLibrary) { resolve(); return; }
+      window.__lookupReady = resolve;
+      window.gm_authFailure = () => { $('#status').innerHTML = '<span class="bad">Google refused the API key — check config.js and that this site address is allowed for the key.</span>'; };
+      const p = new URLSearchParams({ key: cfg.googleMapsApiKey, v: 'weekly', loading: 'async', callback: '__lookupReady', language: cfg.language || 'en', region: cfg.region || 'JP' });
+      const s = document.createElement('script');
+      s.src = `https://maps.googleapis.com/maps/api/js?${p}`;
+      s.onerror = () => reject(new Error('Google Maps could not load.'));
+      document.head.append(s);
+    });
+  }
+
+  function render() {
+    const tbody = $('#results');
+    tbody.replaceChildren(...rows.map((r, i) => {
+      const tr = document.createElement('tr');
+      const tdQ = document.createElement('td'); tdQ.textContent = r.query;
+      const tdM = document.createElement('td'); const tdC = document.createElement('td');
+      if (r.error) { tdM.innerHTML = '<span class="bad"></span>'; tdM.firstChild.textContent = r.error; }
+      else if (!r.candidates.length) { tdM.innerHTML = '<span class="bad">Not found — try adding the city</span>'; }
+      else {
+        const sel = document.createElement('select');
+        r.candidates.forEach((c, ci) => {
+          const o = document.createElement('option');
+          o.value = ci; o.textContent = `${c.name} — ${c.address}${c.kind ? ` (${c.kind})` : ''}`;
+          sel.append(o);
+        });
+        const skip = document.createElement('option'); skip.value = -1; skip.textContent = '— None of these (leave blank) —'; sel.append(skip);
+        sel.value = r.choice;
+        sel.addEventListener('change', () => { r.choice = Number(sel.value); render(); });
+        tdM.append(sel);
+        const c = r.candidates[r.choice];
+        if (c) { const a = document.createElement('a'); a.href = c.url; a.target = '_blank'; a.rel = 'noopener'; a.textContent = `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)} ↗`; tdC.append(a); }
+      }
+      tr.append(tdQ, tdM, tdC);
+      return tr;
+    }));
+    if (sheet) {
+      // The whole tab back, with only the empty location cells filled in.
+      const { header, body, idx } = sheet;
+      const out = body.map((r) => r.slice());
+      rows.forEach((r) => {
+        if (!r.candidates || !r.candidates.length || r.choice < 0) return;
+        const c = r.candidates[r.choice]; const target = out[r.row];
+        if (idx.coordinates !== undefined) target[idx.coordinates] = `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`;
+        else { target[idx.lat] = c.lat.toFixed(6); target[idx.lng] = c.lng.toFixed(6); }
+        if (!(target[idx.place_id] || '').trim()) target[idx.place_id] = c.id;
+      });
+      $('#output').value = [header, ...out].map((r) => r.map(cell).join('\t')).join('\n');
+      $('#pasteHint').innerHTML = 'Then click cell <b>A1</b> of your Places tab and paste. It puts back the same rows, with the missing locations filled in.';
+    } else {
+      $('#output').value = rows.filter((r) => r.candidates && r.candidates.length && r.choice >= 0).map((r) => {
+        const c = r.candidates[r.choice];
+        const v = { name: c.name, area: $('#area').value, category: $('#category').value, coordinates: `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`, place_id: c.id, notes: r.notes };
+        return COLUMNS.map((k) => tidy(v[k])).join('\t');
+      }).join('\n');
+      $('#pasteHint').innerHTML = 'Then click cell <b>A</b> of the first empty row in your Places tab and paste. Fill in the blanks (type, description, notes…) afterwards.';
+    }
+    $('#resultsPanel').hidden = !rows.length;
+  }
+
+  $('#go').addEventListener('click', async () => {
+    const items = readInput();
+    if (!items.length) { $('#status').textContent = sheet ? 'Every row already has a location — nothing to look up.' : 'Type at least one place.'; return; }
+    if (!String(cfg.googleMapsApiKey || '').trim()) { $('#status').innerHTML = '<span class="bad">Add your Google Maps API key to config.js first (README → Step 1).</span>'; return; }
+    $('#go').disabled = true;
+    try {
+      await loadMaps();
+      const { Place } = await google.maps.importLibrary('places');
+      rows = [];
+      for (let i = 0; i < items.length; i++) {
+        $('#status').textContent = `Looking up ${i + 1} of ${items.length}…`;
+        const it = { ...items[i], candidates: [], choice: 0 };
+        try {
+          const { places } = await Place.searchByText({
+            textQuery: it.query,
+            fields: ['id', 'displayName', 'formattedAddress', 'location', 'googleMapsURI', 'primaryTypeDisplayName'],
+            maxResultCount: 3,
+            locationRestriction: JAPAN,
+            language: cfg.language || 'en',
+            region: (cfg.region || 'JP').toLowerCase(),
+          });
+          it.candidates = (places || []).filter((p) => p.location).map((p) => ({
+            id: p.id, name: p.displayName || it.query, address: p.formattedAddress || '', kind: p.primaryTypeDisplayName || '',
+            lat: p.location.lat(), lng: p.location.lng(), url: p.googleMapsURI || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(it.query)}&query_place_id=${p.id}`,
+          }));
+        } catch (e) { it.error = `Lookup failed: ${e.message || e}`; }
+        rows.push(it);
+        render();
+        await sleep(150);
+      }
+      const found = rows.filter((r) => r.candidates.length).length;
+      $('#status').textContent = `Done — found ${found} of ${rows.length}. Check each match (especially chains with several branches), then copy.`;
+    } catch (e) {
+      $('#status').innerHTML = '<span class="bad"></span>';
+      $('#status').firstChild.textContent = e.message || String(e);
+    } finally { $('#go').disabled = false; }
+  });
+
+  $('#input').addEventListener('input', () => {
+    const isSheet = looksLikeSheet($('#input').value);
+    $('#newRowFields').hidden = isSheet; $('#onlyShownWrap').hidden = !isSheet;
+  });
+  $('#area').addEventListener('input', render);
+  $('#category').addEventListener('input', render);
+  $('#copy').addEventListener('click', async () => {
+    const out = $('#output');
+    try { await navigator.clipboard.writeText(out.value); $('#copy').textContent = 'Copied ✓'; }
+    catch { out.select(); document.execCommand('copy'); $('#copy').textContent = 'Copied ✓'; }
+    setTimeout(() => { $('#copy').textContent = 'Copy rows for Google Sheets'; }, 1800);
+  });
+})();
+</script>
+</body>
+</html>

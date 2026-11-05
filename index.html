@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Japan Road Trip Picks</title>
+  <meta name="description" content="Interactive map of our recommended places in Japan — food, snacks, souvenirs, accommodation and scenic drives.">
+  <meta name="theme-color" content="#f6f4f0" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#151413" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗾</text></svg>">
+  <link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+  <div class="app" id="app">
+    <aside class="panel" id="panel" aria-label="Places, filters and routes">
+      <div class="panel-top">
+        <button class="sheet-handle" id="sheetHandle" type="button" aria-label="Show list" aria-expanded="false"><span></span></button>
+        <header class="panel-header">
+          <div class="titles">
+            <h1 id="title">Japan Road Trip</h1>
+            <p class="subtitle" id="subtitle"></p>
+          </div>
+          <button class="btn small ghost sheet-toggle" id="sheetToggle" type="button">List</button>
+        </header>
+        <div class="area-bar" id="areaBar" role="toolbar" aria-label="Choose an area"></div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" id="tabBtnPlaces" aria-selected="true" aria-controls="tabPlaces" data-tab="places">Places <span class="tab-count" id="placeCount"></span></button>
+          <button class="tab" role="tab" id="tabBtnDrive" aria-selected="false" aria-controls="tabDrive" data-tab="drive">Drive &amp; routes</button>
+        </div>
+      </div>
+
+      <div class="panel-body" id="panelBody">
+        <div class="area-info" id="areaInfo" hidden></div>
+        <section class="tab-panel" id="tabPlaces" role="tabpanel" aria-labelledby="tabBtnPlaces">
+          <div class="search">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M10.5 4a6.5 6.5 0 1 0 4 11.6l4.2 4.2 1.4-1.4-4.2-4.2A6.5 6.5 0 0 0 10.5 4Zm0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Z"/></svg>
+            <input type="search" id="search" placeholder="Search — e.g. ramen, onsen, matcha" autocomplete="off" enterkeyhint="search">
+          </div>
+
+          <div class="filter-group">
+            <div class="filter-label">Category</div>
+            <div class="chips" id="categoryChips"></div>
+          </div>
+          <div class="filter-group" id="typeGroup" hidden>
+            <div class="filter-label">Type</div>
+            <div class="chips" id="typeChips"></div>
+          </div>
+
+          <div class="list-toolbar">
+            <span id="resultCount" aria-live="polite"></span>
+            <button class="link-btn" id="clearFilters" type="button" hidden>Clear filters</button>
+            <label class="sort">Sort
+              <select id="sort">
+                <option value="top">Top picks first</option>
+                <option value="name">Name A–Z</option>
+                <option value="area">Area</option>
+                <option value="type">Category &amp; type</option>
+                <option value="near">Closest to map centre</option>
+              </select>
+            </label>
+          </div>
+          <ul class="place-list" id="placeList"></ul>
+          <div class="data-check" id="dataCheck" hidden></div>
+        </section>
+
+        <section class="tab-panel" id="tabDrive" role="tabpanel" aria-labelledby="tabBtnDrive" hidden>
+          <h2 class="section-title">Compare driving routes</h2>
+          <form class="route-form" id="routeForm" autocomplete="off">
+            <label class="route-field">
+              <span class="route-dot a" aria-hidden="true">A</span>
+              <input id="routeFrom" list="placeNames" placeholder="From — pick a place or type an address" aria-label="From">
+            </label>
+            <button class="swap" id="swapRoute" type="button" aria-label="Swap start and end">⇅</button>
+            <label class="route-field">
+              <span class="route-dot b" aria-hidden="true">B</span>
+              <input id="routeTo" list="placeNames" placeholder="To — pick a place or type an address" aria-label="To">
+            </label>
+            <button class="btn primary block" type="submit">Compare routes</button>
+          </form>
+          <p class="hint">Shows the <b>fastest</b> route, a <b>toll-free</b> route and a <b>local-roads</b> route (avoids expressways — usually the more scenic option) side by side.</p>
+          <div id="routeResults" aria-live="polite"></div>
+
+          <h2 class="section-title" id="scenicTitle">Scenic drives</h2>
+          <div id="scenicList"></div>
+        </section>
+      </div>
+    </aside>
+
+    <main class="map-wrap" id="mapWrap">
+      <div id="map" aria-label="Map"></div>
+      <div class="map-notice" id="mapNotice" hidden></div>
+      <div class="route-legend" id="routeLegend" hidden></div>
+      <div class="device-tip" id="deviceTip" hidden>
+        <span>Tip: this planner is easiest on a tablet or computer — but everything works here too.</span>
+        <button type="button" class="icon-btn" id="deviceTipClose" aria-label="Dismiss tip">✕</button>
+      </div>
+      <article class="card" id="card" role="dialog" aria-modal="false" aria-labelledby="cardTitle" hidden></article>
+    </main>
+  </div>
+
+  <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Photos and videos" hidden></div>
+  <datalist id="placeNames"></datalist>
+
+  <script src="config.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>
