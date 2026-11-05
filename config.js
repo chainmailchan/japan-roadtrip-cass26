@@ -22,9 +22,10 @@ window.TRIP_CONFIG = {
   // 2) Where your lists live. These can be files in this repo (default)
   //    or "Publish to web → CSV" links from a Google Sheet (README → "Step 3").
   data: {
-    places: 'data/places.csv',
-    routes: 'data/routes.csv', // scenic drives (optional)
-    areas: 'data/areas.csv',   // area blurbs + suggested days (optional)
+    // Published tabs of the Google Sheet "Japan road-trip map — places for Cass".
+    places: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRZaOpyinTJEWG3z1H113RWQzWNvk3y_pu94R0YfTHqfKoaL5jt2wC9T0j_LCr73Ll0XlEwKP9KO0as/pub?single=true&output=csv&gid=0', // Places tab
+    areas: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRZaOpyinTJEWG3z1H113RWQzWNvk3y_pu94R0YfTHqfKoaL5jt2wC9T0j_LCr73Ll0XlEwKP9KO0as/pub?single=true&output=csv&gid=1',  // Areas tab
+    routes: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRZaOpyinTJEWG3z1H113RWQzWNvk3y_pu94R0YfTHqfKoaL5jt2wC9T0j_LCr73Ll0XlEwKP9KO0as/pub?single=true&output=csv&gid=2', // Routes tab (scenic drives)
   },
 
   // Heading for your personal notes inside each place's pop-up.
