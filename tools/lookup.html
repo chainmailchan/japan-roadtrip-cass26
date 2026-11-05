@@ -237,7 +237,12 @@
             id: p.id, name: p.displayName || it.query, address: p.formattedAddress || '', kind: p.primaryTypeDisplayName || '',
             lat: p.location.lat(), lng: p.location.lng(), url: p.googleMapsURI || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(it.query)}&query_place_id=${p.id}`,
           }));
-        } catch (e) { it.error = `Lookup failed: ${e.message || e}`; }
+        } catch (e) {
+          const msg = String(e.message || e);
+          it.error = /referr?er|PERMISSION_DENIED/i.test(msg)
+            ? 'Blocked by the API key settings. Your API key’s website restriction must allow https://chainmailchan.github.io/* (the whole site, not just this folder).'
+            : `Lookup failed: ${msg}`;
+        }
         rows.push(it);
         render();
         await sleep(150);

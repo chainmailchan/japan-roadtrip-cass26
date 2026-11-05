@@ -38,7 +38,9 @@ Your trip app already uses a Google Cloud project with billing switched on, so t
 6. Open **☰ → APIs & Services → Credentials → + Create credentials → API key**. Copy the key that appears. If a "Protect your key" or settings page opens, carry on below; otherwise click the new key's name in the list.
 7. **Name:** e.g. "Road-trip map (friends)".
 8. **Application restrictions:** choose **Websites**, then **Add** each of these:
-   - `https://chainmailchan.github.io/japan-roadtrip-cass26/*` (the site's address; see Step 2)
+   - `https://chainmailchan.github.io/*` (your GitHub Pages address)
+     Use the whole address, not just this site's folder: browsers tell Google only *which site* a request comes from,
+     so a folder-level entry blocks place lookups, Google photos and routes (the map itself would still load).
    - optionally `http://localhost:8000/*` (only if you want to preview on your own computer)
 9. **API restrictions:** choose **Restrict key**, tick **Maps JavaScript API**, **Places API (New)** and **Routes API**, then **OK**.
 10. Click **Save**. Changes can take up to about 5 minutes to work.

@@ -931,7 +931,9 @@
       const err = settled.find((s) => s.err);
       routeMsg(err ? 'Couldn’t calculate a route.' : 'No driving route found between these places.', {
         error: true,
-        detail: err ? `${err.err.message || err.err} — if this keeps happening, check that “Routes API” is enabled for your key.` : '',
+        detail: err ? (/referr?er|PERMISSION_DENIED/i.test(String(err.err.message || err.err))
+          ? 'Your API key’s website restriction must allow https://chainmailchan.github.io/* (the whole site, not just this folder).'
+          : `${err.err.message || err.err} — if this keeps happening, check that “Routes API” is enabled for your key.`) : '',
       });
       return;
     }
