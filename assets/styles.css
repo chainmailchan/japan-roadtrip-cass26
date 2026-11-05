@@ -379,6 +379,29 @@ h1 { margin: 0; font-size: 21px; line-height: 1.2; letter-spacing: -.01em; }
 .ro-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 8px; }
 .ro-hint { font-size: 12.5px; color: var(--muted); }
 
+.trip-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.trip-head .section-title { margin: 6px 0; }
+#tripWhole.is-active { background: var(--text); border-color: var(--text); color: var(--surface); }
+.trip-total { font-weight: 700; font-size: 13.5px; margin: 4px 0 12px; }
+.leg-card { border: 1px solid var(--border); border-left: 5px solid var(--rc); border-radius: 12px; margin-bottom: 10px; background: var(--surface); }
+.leg-card.is-selected { box-shadow: 0 0 0 2px color-mix(in srgb, var(--rc) 40%, transparent); }
+.leg-head { display: flex; align-items: flex-start; gap: 12px; width: 100%; text-align: left; border: 0; background: none; padding: 12px; }
+.leg-num { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--rc); color: #fff; font-weight: 800; font-size: 14px; }
+.leg-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.leg-day { font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.leg-name { font-weight: 700; font-size: 15px; }
+.leg-stops { font-size: 13px; color: var(--muted); }
+.leg-summary { margin: -4px 12px 10px 52px; font-weight: 700; font-size: 13.5px; }
+.leg-text { margin: 0 12px 10px 52px; font-size: 14px; }
+.leg-text p { margin: 0 0 6px; }
+.leg-details { padding: 0 12px 4px; }
+.other-drive { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 12px; }
+.other-drive summary { cursor: pointer; font-weight: 600; color: var(--muted); margin-bottom: 10px; }
+.other-drive[open] summary { margin-bottom: 12px; }
+.other-drive #routeResults { margin-top: 12px; }
+.legend-note { font-size: 12px; font-weight: 700; color: var(--muted); padding: 0 4px 0 6px; white-space: nowrap; }
+.route-end.stop { background: #1f1c19; }
+@media (prefers-color-scheme: dark) { .route-end.stop { background: #4a443e; } }
 .scenic-card { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 10px; }
 .scenic-card.is-selected { border-color: #e8710a; box-shadow: 0 0 0 2px rgba(232,113,10,.25); }
 .scenic-card h3 { margin: 0 0 2px; font-size: 15.5px; }

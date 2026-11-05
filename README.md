@@ -5,7 +5,7 @@ An interactive, filterable map of our recommended places in Japan, made for frie
 - **Areas:** narrow the map to one area (e.g. Tokyo, Kamakura). The map zooms to it and shows any notes and suggested days for that area.
 - **Categories and types:** filter by category (Food, Snacks, Souvenirs, Accommodation…), then by type (Ramen, Sushi…). You can also search and sort.
 - **Pop-ups:** tap a pin to see a photo, name, short description, our tips, any photos or videos, and a **View in Google Maps** button.
-- **Driving routes:** compare the **fastest**, **toll-free** and **local-roads** routes between any two places. Each one shows its time, distance and tolls. There is also a list of **scenic drives** we've picked.
+- **Road trip:** our drives, in order. Tap one to draw it on the map with its **fastest**, **toll-free** and **local-roads** options (time, distance and tolls), or **Show whole trip** to see every drive at once. A small "Check another drive" section compares any two places.
 - **Works on phones:** on a phone the list becomes a pull-up sheet. It is easiest to use on a tablet or computer.
 
 Everything you edit is in **`config.js`** (settings) and the **data lists** (a Google Sheet or the CSV files in `data/`).
@@ -110,15 +110,18 @@ Column names are not case-sensitive. Only **name**, **area**, **category** and a
 
 Separate `lat` and `lng` columns also work instead of `coordinates`.
 
-### Routes (scenic drives)
+### Routes (the road trip)
+
+One row per drive, in the order you drove them. They appear as numbered drives in the **Road trip** tab.
 
 | Column | What to put |
 |---|---|
-| `name` | e.g. "Hakone loop" |
-| `area` | Shown when that area is selected. Leave blank to always show it. |
-| `from`, `to` | A place name from your Places list, coordinates, or an address |
-| `via` | Points to pass through, one per line. These make the route follow the roads you mean. |
-| `avoid_tolls`, `avoid_highways` | `yes` if the drive should avoid them |
+| `show` | `no` hides the drive |
+| `day` | Optional label, e.g. "Day 1" or "23 Oct" |
+| `name` | e.g. "Hachioji → Lake Kawaguchiko". Leave blank to use "from → to". |
+| `from`, `to` | A place name from the Places tab (switched-off places work too), coordinates, or a name/address — Google finds names that have no coordinates |
+| `via` | Optional stops to pass through, one per line, so the route follows the roads you took |
+| `avoid_tolls`, `avoid_highways` | `yes` to show the toll-free or local-roads version first |
 | `description`, `notes`, `media`, `maps_url` | Same as for Places |
 
 ### Areas (optional)
@@ -169,7 +172,7 @@ If a place has no photo of your own but has a `place_id`, the pop-up shows Googl
 
 ## Good to know
 
-- **"Scenic" routes:** Google has no "scenic" setting. The **Local roads** option avoids expressways, which is usually the more scenic choice. For specific roads you love, add them to the **Routes** list with `via` points.
+- **"Scenic" routes:** Google has no "scenic" setting. The **Local roads** option avoids expressways, which is usually the more scenic choice. For specific roads you love, add `via` stops to that drive in the **Routes** tab.
 - **Route times** are typical driving times without live traffic. **Toll amounts** come from Google when available. Otherwise the route just says "Has tolls" or "No tolls".
 - **"Open in Google Maps"** opens directions in the Google Maps app or website. Google's links can't switch on "avoid tolls" automatically, so for those options the button reminds you to turn it on under *Options*.
 - **Share a single place:** the 🔗 button on a pop-up copies a link that opens straight to that place.

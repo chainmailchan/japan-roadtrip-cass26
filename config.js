@@ -67,5 +67,6 @@ window.TRIP_CONFIG = {
     'Park': '🏰', 'Attraction': '🎠', 'Car rental': '🚗', 'Airport': '✈️',
   },
 
-  scenicHeading: 'Scenic drives we recommend',
+  // Heading of the Road trip tab (its drives come from the Routes tab of the sheet).
+  tripHeading: 'Our road trip',
 };

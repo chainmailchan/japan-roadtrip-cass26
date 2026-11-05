@@ -27,7 +27,7 @@
         <div class="area-bar" id="areaBar" role="toolbar" aria-label="Choose an area"></div>
         <div class="tabs" role="tablist">
           <button class="tab" role="tab" id="tabBtnPlaces" aria-selected="true" aria-controls="tabPlaces" data-tab="places">Places <span class="tab-count" id="placeCount"></span></button>
-          <button class="tab" role="tab" id="tabBtnDrive" aria-selected="false" aria-controls="tabDrive" data-tab="drive">Drive &amp; routes</button>
+          <button class="tab" role="tab" id="tabBtnDrive" aria-selected="false" aria-controls="tabDrive" data-tab="drive">Road trip</button>
         </div>
       </div>
 
@@ -66,24 +66,30 @@
         </section>
 
         <section class="tab-panel" id="tabDrive" role="tabpanel" aria-labelledby="tabBtnDrive" hidden>
-          <h2 class="section-title">Compare driving routes</h2>
-          <form class="route-form" id="routeForm" autocomplete="off">
-            <label class="route-field">
-              <span class="route-dot a" aria-hidden="true">A</span>
-              <input id="routeFrom" list="placeNames" placeholder="From — pick a place or type an address" aria-label="From">
-            </label>
-            <button class="swap" id="swapRoute" type="button" aria-label="Swap start and end">⇅</button>
-            <label class="route-field">
-              <span class="route-dot b" aria-hidden="true">B</span>
-              <input id="routeTo" list="placeNames" placeholder="To — pick a place or type an address" aria-label="To">
-            </label>
-            <button class="btn primary block" type="submit">Compare routes</button>
-          </form>
-          <p class="hint">Shows the <b>fastest</b> route, a <b>toll-free</b> route and a <b>local-roads</b> route (avoids expressways — usually the more scenic option) side by side.</p>
-          <div id="routeResults" aria-live="polite"></div>
+          <div class="trip-head">
+            <h2 class="section-title" id="tripTitle">Our road trip</h2>
+            <button class="btn small primary" id="tripWhole" type="button" hidden>Show whole trip</button>
+          </div>
+          <p class="hint" id="tripIntro" hidden>Tap a drive to see it on the map, with the fastest, toll-free and local-roads options.</p>
+          <p class="trip-total" id="tripTotal" hidden></p>
+          <div id="tripList"></div>
 
-          <h2 class="section-title" id="scenicTitle">Scenic drives</h2>
-          <div id="scenicList"></div>
+          <details class="other-drive" id="otherDrive">
+            <summary>Check another drive</summary>
+            <form class="route-form" id="routeForm" autocomplete="off">
+              <label class="route-field">
+                <span class="route-dot a" aria-hidden="true">A</span>
+                <input id="routeFrom" list="placeNames" placeholder="From — pick a place or type an address" aria-label="From">
+              </label>
+              <button class="swap" id="swapRoute" type="button" aria-label="Swap start and end">⇅</button>
+              <label class="route-field">
+                <span class="route-dot b" aria-hidden="true">B</span>
+                <input id="routeTo" list="placeNames" placeholder="To — pick a place or type an address" aria-label="To">
+              </label>
+              <button class="btn primary block" type="submit">Compare routes</button>
+            </form>
+            <div id="routeResults" aria-live="polite"></div>
+          </details>
         </section>
       </div>
     </aside>

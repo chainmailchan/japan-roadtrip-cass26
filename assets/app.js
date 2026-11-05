@@ -17,7 +17,7 @@
     categories: [],
     defaultCategory: { color: '#6b7280', icon: '📍' },
     typeIcons: {},
-    scenicHeading: 'Scenic drives',
+    tripHeading: 'Our road trip',
   }, window.TRIP_CONFIG || {});
 
   const ROUTE_PROFILES = [
@@ -25,7 +25,8 @@
     { key: 'free', label: 'Toll-free', color: '#0f9d58', modifiers: { avoidTolls: true }, hint: 'In Google Maps, turn on Options → Avoid tolls.' },
     { key: 'local', label: 'Local roads', color: '#8e44ad', modifiers: { avoidHighways: true }, hint: 'In Google Maps, turn on Options → Avoid highways.' },
   ];
-  const SCENIC_COLOR = '#e8710a';
+  const LEG_COLORS = ['#2563eb', '#0f9d58', '#8e44ad', '#e8710a', '#d13a82', '#0e7490', '#a16207', '#4f46e5'];
+  const KEY_HINT = 'Your API key’s website restriction must allow https://chainmailchan.github.io/* (the whole site, not just this folder).';
   const JAPAN = { center: { lat: 36.2, lng: 138.25 }, zoom: 6 };
 
   /* ═════════════ Small helpers ═════════════ */
@@ -208,7 +209,7 @@
     area: 'all', categories: new Set(), types: new Set(), search: '', sort: 'top',
     activeId: null, tab: 'places',
     map: null, mapsReady: false, lib: {}, markers: new Map(),
-    routeLayers: [], routeEndMarkers: [], selectedRoute: null, activeDriveIdx: null,
+    allByName: new Map(), routeLayers: [], routeEndMarkers: [], selectedRoute: null, activeLeg: null, routeToken: 0,
   };
 
   const catConfig = new Map(cfg.categories.map((c, i) => [c.name.toLowerCase(), { ...c, index: i }]));
@@ -222,13 +223,17 @@
   const areaIndex = (a) => { const i = state.areaOrder.indexOf(a); return i === -1 ? 999 : i; };
 
   /* ═════════════ Data loading ═════════════ */
+  function rowCoords(row) {
+    return parseCoordText(pick(row, 'coordinates', 'coords', 'latlng', 'lat_lng', 'location'))
+      || validLatLng(parseFloat(pick(row, 'lat', 'latitude')), parseFloat(pick(row, 'lng', 'lon', 'long', 'longitude')))
+      || coordsFromMapsUrl(pick(row, 'maps_url', 'google_maps_url', 'google_maps', 'url', 'link'));
+  }
+
   function normalizePlace(row, idx, seenIds) {
     const name = pick(row, 'name', 'title', 'place');
     if (!name || name.startsWith('#') || switchedOff(pick(row, 'show', 'keep', 'include'))) return null;
     const mapsUrl = pick(row, 'maps_url', 'google_maps_url', 'google_maps', 'url', 'link');
-    const coords = parseCoordText(pick(row, 'coordinates', 'coords', 'latlng', 'lat_lng', 'location'))
-      || validLatLng(parseFloat(pick(row, 'lat', 'latitude')), parseFloat(pick(row, 'lng', 'lon', 'long', 'longitude')))
-      || coordsFromMapsUrl(mapsUrl);
+    const coords = rowCoords(row);
     if (!coords) { state.warnings.push(`“${name}” is hidden — no coordinates found.`); return null; }
     const area = pick(row, 'area', 'region', 'city') || 'Other';
     const category = pick(row, 'category', 'cat') || 'Other';
@@ -254,22 +259,25 @@
     return p;
   }
 
+  // One row of the Routes tab = one drive (leg) of the road trip, in row order.
   function normalizeDrive(row) {
-    const name = pick(row, 'name', 'title');
-    if (!name || name.startsWith('#') || switchedOff(pick(row, 'show', 'keep', 'include'))) return null;
     const from = pick(row, 'from', 'start', 'origin');
     const to = pick(row, 'to', 'end', 'destination');
-    if (!from || !to) { state.warnings.push(`Scenic drive “${name}” is hidden — it needs both “from” and “to”.`); return null; }
+    const name = pick(row, 'name', 'title');
+    if (!from && !to && !name) return null;
+    if ((name || from).startsWith('#') || switchedOff(pick(row, 'show', 'keep', 'include'))) return null;
+    if (!from || !to) { state.warnings.push(`Drive “${name || from || to}” is hidden — it needs both “from” and “to”.`); return null; }
     return {
-      name, from, to,
+      name: name || `${from} → ${to}`, from, to,
+      day: pick(row, 'day', 'date', 'when'),
       via: splitList(pick(row, 'via', 'stops', 'waypoints')),
-      area: pick(row, 'area', 'region'),
       description: pick(row, 'description', 'desc', 'summary'),
       notes: pick(row, 'notes', 'our_notes', 'tips'),
       avoidTolls: truthy(pick(row, 'avoid_tolls')),
       avoidHighways: truthy(pick(row, 'avoid_highways')),
       mapsUrl: pick(row, 'maps_url', 'google_maps_url', 'link'),
       media: splitList(pick(row, 'media', 'photos_videos')),
+      summary: '',
     };
   }
 
@@ -277,7 +285,7 @@
     const d = cfg.data || {};
     const [placesRows, driveRows, areaRows] = await Promise.all([
       fetchCSV(d.places, 'places list'),
-      fetchCSV(d.routes, 'scenic drives list').catch((e) => { state.warnings.push(e.message); return []; }),
+      fetchCSV(d.routes, 'road trip (Routes tab)').catch((e) => { state.warnings.push(e.message); return []; }),
       fetchCSV(d.areas, 'areas list').catch((e) => { state.warnings.push(e.message); return []; }),
     ]);
 
@@ -300,6 +308,16 @@
       p.label = nameCount[p.name.toLowerCase()] > 1 ? `${p.name} — ${p.area}` : p.name;
       state.byLabel.set(p.label.toLowerCase(), p);
       if (!state.byLabel.has(p.name.toLowerCase())) state.byLabel.set(p.name.toLowerCase(), p);
+    });
+
+    // Every named row (shown or hidden) can be a stop on a drive.
+    placesRows.forEach((r) => {
+      const name = pick(r, 'name', 'title', 'place');
+      if (!name || name.startsWith('#')) return;
+      const c = rowCoords(r); const key = name.toLowerCase(); const prev = state.allByName.get(key);
+      if (!prev || (c && prev.lat == null)) {
+        state.allByName.set(key, { name, lat: c ? c.lat : null, lng: c ? c.lng : null, placeId: pick(r, 'place_id', 'google_place_id', 'placeid') });
+      }
     });
 
     state.drives = driveRows.map(normalizeDrive).filter(Boolean);
@@ -445,7 +463,6 @@
     renderFilters();
     const visible = renderList();
     syncMarkers(visible);
-    renderDrives();
     if (fit) fitToArea();
   }
 
@@ -789,18 +806,45 @@
   }
 
   /* ═════════════ Routes ═════════════ */
+  // A stop on a drive: a place from the sheet (shown or hidden), coordinates, or a name/address.
   function resolveLocation(text) {
     const t = clean(text);
     if (!t) return null;
-    const p = state.byLabel.get(t.toLowerCase());
-    if (p) {
+    const p = state.byLabel.get(t.toLowerCase()) || state.allByName.get(t.toLowerCase());
+    if (p && p.lat != null) {
       return { label: p.name, query: { lat: p.lat, lng: p.lng }, latLng: { lat: p.lat, lng: p.lng },
         mapsParam: p.placeId ? p.name : `${p.lat},${p.lng}`, placeId: p.placeId, coordsParam: `${p.lat},${p.lng}` };
     }
     const c = parseCoordText(t);
     if (c) return { label: t, query: c, latLng: c, mapsParam: `${c.lat},${c.lng}`, coordsParam: `${c.lat},${c.lng}` };
-    return { label: t, query: t, mapsParam: t, coordsParam: t };
+    const label = p ? p.name : t;
+    return { label, query: label, mapsParam: label, coordsParam: label, needsLookup: true };
   }
+
+  // Stops without coordinates (e.g. a hidden row, or a typed name) are found with Google's place search.
+  const stopCache = new Map();
+  async function resolveForRoute(text) {
+    const r = resolveLocation(text);
+    if (!r || !r.needsLookup || !state.mapsReady) return r;
+    const key = r.label.toLowerCase();
+    if (!stopCache.has(key)) {
+      stopCache.set(key, (async () => {
+        const { Place } = await google.maps.importLibrary('places');
+        const { places } = await Place.searchByText({
+          textQuery: r.label, fields: ['id', 'location'], maxResultCount: 1,
+          locationRestriction: { north: 45.8, south: 24.0, east: 154.0, west: 122.8 },
+          language: cfg.language || 'en', region: (cfg.region || 'JP').toLowerCase(),
+        });
+        const hit = places && places[0];
+        return hit && hit.location ? { lat: hit.location.lat(), lng: hit.location.lng(), placeId: hit.id } : null;
+      })().catch(() => null));
+    }
+    const found = await stopCache.get(key);
+    if (!found) return r; // let Google read it as an address
+    const latLng = { lat: found.lat, lng: found.lng };
+    return { ...r, query: latLng, latLng, placeId: found.placeId, coordsParam: `${found.lat},${found.lng}`, needsLookup: false };
+  }
+  const resolveStops = (texts) => Promise.all(texts.map(resolveForRoute));
 
   function directionsUrl(o, d, vias = []) {
     const q = new URLSearchParams({ api: '1', travelmode: 'driving', origin: o.mapsParam, destination: d.mapsParam });
@@ -850,14 +894,31 @@
     const prices = (info.estimatedPrices || []).map(fmtMoney).filter(Boolean);
     return { has: true, text: prices.length ? `Tolls ≈ ${prices.join(' + ')}` : 'Has tolls' };
   }
+  const resultLine = (res) => {
+    const toll = tollSummary(res);
+    return `${fmtDuration(res.route.durationMillis)} · ${fmtDistance(res.route.distanceMeters)}${toll ? ` · ${toll.text}` : ''}`;
+  };
+  const pathEnds = (route) => {
+    const path = route.path || [];
+    const pt = (x) => x && { lat: x.lat, lng: x.lng };
+    return { start: pt(path[0]), end: pt(path[path.length - 1]) };
+  };
 
   function clearRoutes() {
+    state.routeToken++;
     state.routeLayers.forEach((l) => l.lines.forEach((pl) => pl.setMap(null)));
     state.routeEndMarkers.forEach((m) => { m.map = null; });
-    state.routeLayers = []; state.routeEndMarkers = []; state.selectedRoute = null;
-    state.activeDriveIdx = null;
+    state.routeLayers = []; state.routeEndMarkers = []; state.selectedRoute = null; state.activeLeg = null;
     $('#routeLegend').hidden = true;
-    document.querySelectorAll('.scenic-card.is-selected').forEach((c) => c.classList.remove('is-selected'));
+    $('#routeResults').replaceChildren();
+    $('#tripWhole').classList.remove('is-active');
+    $('#tripWhole').textContent = 'Show whole trip';
+    $('#tripTotal').hidden = true;
+    document.querySelectorAll('.leg-card').forEach((c) => {
+      c.classList.remove('is-selected');
+      c.querySelector('.leg-head').setAttribute('aria-expanded', 'false');
+      const box = c.querySelector('.leg-details'); box.hidden = true; box.replaceChildren();
+    });
   }
 
   function drawRoute(key, route, color) {
@@ -883,15 +944,10 @@
     });
   }
 
-  function addEndMarkers(o, d, results) {
-    const { AdvancedMarkerElement } = state.lib;
-    const ends = [[o, 'A', 'a', results.start], [d, 'B', 'b', results.end]];
-    ends.forEach(([loc, letter, cls, fallback]) => {
-      const position = loc.latLng || fallback;
-      if (!position) return;
-      const m = new AdvancedMarkerElement({ position, map: state.map, zIndex: 2000, title: loc.label, content: h('div', { class: `route-end ${cls}` }, letter) });
-      state.routeEndMarkers.push(m);
-    });
+  function addMarker(position, text, cls, title) {
+    if (!position) return;
+    const m = new state.lib.AdvancedMarkerElement({ position, map: state.map, zIndex: 2000, title, content: h('div', { class: `route-end ${cls}` }, text) });
+    state.routeEndMarkers.push(m);
   }
 
   function fitRoutes(results) {
@@ -900,151 +956,199 @@
     if (!b.isEmpty()) state.map.fitBounds(b, mapPadding());
   }
 
-  function renderLegend(items) {
+  function renderLegend(items, note = '') {
     const legend = $('#routeLegend');
-    legend.replaceChildren(
+    legend.replaceChildren(...[
+      note ? h('span', { class: 'legend-note' }, note) : null,
       h('div', { class: 'legend-items' }, items.map((it) => h('button', {
         class: 'legend-item', type: 'button', dataset: { routeKey: it.key }, style: { '--rc': it.color },
         'aria-pressed': 'false', onclick: () => selectRoute(it.key),
       }, h('span', { class: 'sw' }), it.label, h('span', { class: 't' }, it.time)))),
-      h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Clear route', title: 'Clear route', onclick: () => { clearRoutes(); $('#routeResults').replaceChildren(); } }, '✕'));
+      h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Clear route', title: 'Clear route', onclick: () => clearRoutes() }, '✕'),
+    ].filter(Boolean));
     legend.hidden = false;
   }
 
-  function routeMsg(text, { error = false, detail = '' } = {}) {
-    $('#routeResults').replaceChildren(h('div', { class: `route-msg${error ? ' error' : ''}` }, text, detail ? h('small', null, detail) : null));
+  function routeError(settled) {
+    const err = settled.find((s) => s.err);
+    const msg = err ? String(err.err.message || err.err) : '';
+    return h('div', { class: 'route-msg error' }, err ? 'Couldn’t calculate a route.' : 'No driving route found.',
+      err ? h('small', null, /referr?er|PERMISSION_DENIED/i.test(msg) ? KEY_HINT
+        : `${msg} — if this keeps happening, check that “Routes API” is enabled for your key.`) : null);
   }
 
-  async function planRoute() {
-    const o = resolveLocation($('#routeFrom').value);
-    const d = resolveLocation($('#routeTo').value);
-    if (!o || !d) { routeMsg('Choose a start (A) and an end (B) — pick from the list or type an address.'); return; }
-    if (!state.mapsReady) { routeMsg('Routes need the map to be switched on (Google Maps API key in config.js).', { error: true }); return; }
+  // Draw the fastest, toll-free and local-roads versions of one drive; list them in `box`.
+  // Returns the shown result, or null if nothing could be drawn.
+  async function showComparison({ o, d, vias = [], box, preferred = 'fast', mapsUrl = '', onCleared }) {
     clearRoutes();
     closeCard();
-    routeMsg('Calculating routes…');
-    const settled = await Promise.all(ROUTE_PROFILES.map((pr) => computeRoute(o, d, [], pr.modifiers)
+    if (onCleared) onCleared();
+    const token = state.routeToken;
+    box.hidden = false;
+    box.replaceChildren(h('div', { class: 'route-msg' }, 'Calculating routes…'));
+    const settled = await Promise.all(ROUTE_PROFILES.map((pr) => computeRoute(o, d, vias, pr.modifiers)
       .then((res) => ({ pr, res }), (err) => ({ pr, err }))));
-
+    if (token !== state.routeToken) return null; // something else was chosen meanwhile
     const ok = settled.filter((s) => s.res);
-    if (!ok.length) {
-      const err = settled.find((s) => s.err);
-      routeMsg(err ? 'Couldn’t calculate a route.' : 'No driving route found between these places.', {
-        error: true,
-        detail: err ? (/referr?er|PERMISSION_DENIED/i.test(String(err.err.message || err.err))
-          ? 'Your API key’s website restriction must allow https://chainmailchan.github.io/* (the whole site, not just this folder).'
-          : `${err.err.message || err.err} — if this keeps happening, check that “Routes API” is enabled for your key.`) : '',
-      });
-      return;
-    }
+    if (!ok.length) { box.replaceChildren(routeError(settled)); return null; }
 
-    // Mark profiles that came back identical to an earlier one.
-    ok.forEach((s, i) => {
+    ok.forEach((s, i) => { // mark options that came back identical to an earlier one
       const twin = ok.slice(0, i).find((t) => Math.abs(t.res.route.distanceMeters - s.res.route.distanceMeters) < 50
         && Math.abs((t.res.route.durationMillis || 0) - (s.res.route.durationMillis || 0)) < 60000);
       if (twin) s.sameAs = twin.pr.label;
     });
-    // Draw back-to-front so "Fastest" ends up on top.
     [...ok].reverse().forEach((s) => { if (!s.sameAs) drawRoute(s.pr.key, s.res.route, s.pr.color); });
-    const firstPath = ok[0].res.route.path || [];
-    addEndMarkers(o, d, { start: firstPath[0] && { lat: firstPath[0].lat, lng: firstPath[0].lng }, end: firstPath.length && { lat: firstPath[firstPath.length - 1].lat, lng: firstPath[firstPath.length - 1].lng } });
+    const ends = pathEnds(ok[0].res.route);
+    addMarker(o.latLng || ends.start, 'A', 'a', o.label);
+    addMarker(d.latLng || ends.end, 'B', 'b', d.label);
     fitRoutes(ok.map((s) => s.res));
 
-    const cards = settled.map((s) => {
-      if (s.err || !s.res) {
-        return h('div', { class: 'route-option', style: { '--rc': s.pr.color } },
-          h('div', { class: 'ro-head' }, h('span', { class: 'ro-label' }, s.pr.label)),
-          h('div', { class: 'ro-meta' }, s.err ? 'Couldn’t calculate this option.' : 'No route found.'));
-      }
-      const r = s.res.route;
-      const toll = tollSummary(s.res);
-      return h('div', { class: 'route-option', style: { '--rc': s.pr.color }, dataset: { routeKey: s.sameAs ? '' : s.pr.key } },
-        h('button', { class: 'ro-head', type: 'button', onclick: () => !s.sameAs && selectRoute(s.pr.key) },
-          h('span', { class: 'ro-label' }, s.pr.label),
-          h('span', { class: 'ro-time' }, fmtDuration(r.durationMillis))),
-        h('div', { class: 'ro-meta' }, fmtDistance(r.distanceMeters),
-          toll ? [' · ', h('span', { class: toll.has ? 'toll-yes' : 'toll-no' }, toll.text)] : null,
-          s.sameAs ? ` · Same route as ${s.sameAs}` : null),
-        h('div', { class: 'ro-foot' },
-          h('a', { class: 'btn small', href: directionsUrl(o, d), target: '_blank', rel: 'noopener' }, 'Open in Google Maps ↗'),
-          s.pr.hint ? h('span', { class: 'ro-hint' }, s.pr.hint) : null));
-    });
-    $('#routeResults').replaceChildren(
-      h('div', { class: 'route-options' }, cards),
+    const gmaps = mapsUrl || directionsUrl(o, d, vias);
+    box.replaceChildren(
+      h('div', { class: 'route-options' }, settled.map((s) => {
+        if (!s.res) {
+          return h('div', { class: 'route-option', style: { '--rc': s.pr.color } },
+            h('div', { class: 'ro-head' }, h('span', { class: 'ro-label' }, s.pr.label)),
+            h('div', { class: 'ro-meta' }, s.err ? 'Couldn’t calculate this option.' : 'No route found.'));
+        }
+        const r = s.res.route; const toll = tollSummary(s.res);
+        return h('div', { class: 'route-option', style: { '--rc': s.pr.color }, dataset: { routeKey: s.sameAs ? '' : s.pr.key } },
+          h('button', { class: 'ro-head', type: 'button', onclick: () => !s.sameAs && selectRoute(s.pr.key) },
+            h('span', { class: 'ro-label' }, s.pr.label), h('span', { class: 'ro-time' }, fmtDuration(r.durationMillis))),
+          h('div', { class: 'ro-meta' }, fmtDistance(r.distanceMeters),
+            toll ? [' · ', h('span', { class: toll.has ? 'toll-yes' : 'toll-no' }, toll.text)] : null,
+            s.sameAs ? ` · Same route as ${s.sameAs}` : null),
+          h('div', { class: 'ro-foot' },
+            h('a', { class: 'btn small', href: gmaps, target: '_blank', rel: 'noopener' }, 'Open in Google Maps ↗'),
+            s.pr.hint ? h('span', { class: 'ro-hint' }, s.pr.hint) : null));
+      })),
       h('p', { class: 'hint' }, 'Times are typical (no live traffic). Toll estimates come from Google and may not include every discount.'));
     renderLegend(ok.filter((s) => !s.sameAs).map((s) => ({ key: s.pr.key, color: s.pr.color, label: s.pr.label, time: fmtDuration(s.res.route.durationMillis) })));
-    selectRoute(ok[0].pr.key);
+    const shown = ok.find((s) => s.pr.key === preferred && !s.sameAs) || ok[0];
+    selectRoute(shown.pr.key);
     if (isMobile()) setSheet(false);
+    return shown.res;
+  }
+
+  // "Check another drive": any two places or addresses.
+  async function planRoute() {
+    const box = $('#routeResults');
+    const [o, d] = await resolveStops([$('#routeFrom').value, $('#routeTo').value]);
+    if (!o || !d) { box.replaceChildren(h('div', { class: 'route-msg' }, 'Choose a start (A) and an end (B) — pick from the list or type an address.')); return; }
+    if (!state.mapsReady) { box.replaceChildren(h('div', { class: 'route-msg error' }, 'Routes need the map to be switched on (Google Maps API key in config.js).')); return; }
+    await showComparison({ o, d, box });
   }
 
   function routeWith(p, which) {
     $(which === 'from' ? '#routeFrom' : '#routeTo').value = p.label;
     setTab('drive');
+    $('#otherDrive').open = true;
     const other = $(which === 'from' ? '#routeTo' : '#routeFrom');
     if (clean(other.value)) { closeCard(); planRoute(); }
     else {
       if (isMobile()) { closeCard(); setSheet(true); }
       other.focus();
     }
+    $('#otherDrive').scrollIntoView({ block: 'nearest' });
   }
 
-  /* ═════════════ Scenic drives ═════════════ */
-  function renderDrives(force = false) {
-    if (!force && state.drivesRenderedFor === state.area) return;
-    state.drivesRenderedFor = state.area;
-    const list = $('#scenicList');
-    const title = $('#scenicTitle');
-    title.textContent = cfg.scenicHeading || 'Scenic drives';
-    const drives = state.drives.map((d, i) => ({ d, i })).filter(({ d }) => state.area === 'all' || !d.area || d.area === state.area);
-    if (!state.drives.length) { title.hidden = true; list.replaceChildren(); return; }
-    title.hidden = false;
-    if (!drives.length) { list.replaceChildren(h('p', { class: 'hint' }, `No scenic drives listed for ${state.area}.`)); return; }
-    list.replaceChildren(...drives.map(({ d, i }) => {
-      const o = resolveLocation(d.from); const dest = resolveLocation(d.to); const vias = d.via.map(resolveLocation).filter(Boolean);
-      const summary = h('div', { class: 'summary', hidden: true });
-      const card = h('div', { class: `scenic-card${state.activeDriveIdx === i ? ' is-selected' : ''}`, dataset: { idx: i } },
-        h('h3', null, d.name),
-        h('div', { class: 'meta' }, [d.area, [o.label, ...vias.map((v) => v.label), dest.label].join(' → ')].filter(Boolean).join(' · ')),
-        d.description ? richText(d.description) : null,
-        d.notes ? h('div', { class: 'notes' }, h('div', { class: 'notes-label' }, cfg.notesLabel), richText(d.notes)) : null,
-        summary,
-        h('div', { class: 'actions' },
-          h('button', { class: 'btn small primary', type: 'button', onclick: () => showDrive(i, card, summary) }, 'Show on map'),
-          h('a', { class: 'btn small', href: d.mapsUrl || directionsUrl(o, dest, vias), target: '_blank', rel: 'noopener' }, 'Open in Google Maps ↗'),
-          d.media.length ? h('button', { class: 'btn small', type: 'button', onclick: () => openLightbox(d.media.map(classifyMedia).filter((m) => m.kind !== 'link'), 0, d.name) }, 'Photos & videos') : null));
-      return card;
+  /* ═════════════ Road trip (Routes tab) ═════════════ */
+  const legColor = (i) => LEG_COLORS[i % LEG_COLORS.length];
+  const legModifiers = (leg) => Object.assign({}, leg.avoidTolls && { avoidTolls: true }, leg.avoidHighways && { avoidHighways: true });
+  const legProfile = (leg) => (leg.avoidHighways ? 'local' : leg.avoidTolls ? 'free' : 'fast');
+
+  function renderTrip() {
+    $('#tripTitle').textContent = cfg.tripHeading || 'Our road trip';
+    const list = $('#tripList');
+    const legs = state.drives;
+    $('#tripWhole').hidden = legs.length < 2;
+    $('#tripIntro').hidden = !legs.length;
+    if (!legs.length) {
+      list.replaceChildren(h('p', { class: 'hint' }, 'No drives yet — add them to the Routes tab of the sheet, one row per drive.'));
+      return;
+    }
+    list.replaceChildren(...legs.map((leg, i) => {
+      const stops = [leg.from, ...leg.via, leg.to].map((t) => (resolveLocation(t) || {}).label || t);
+      leg.summaryEl = h('div', { class: 'leg-summary', hidden: !leg.summary }, leg.summary);
+      return h('div', { class: 'leg-card', dataset: { leg: i }, style: { '--rc': legColor(i) } },
+        h('button', { class: 'leg-head', type: 'button', 'aria-expanded': 'false', onclick: () => showLeg(i) },
+          h('span', { class: 'leg-num', 'aria-hidden': 'true' }, i + 1),
+          h('span', { class: 'leg-main' },
+            leg.day ? h('span', { class: 'leg-day' }, leg.day) : null,
+            h('span', { class: 'leg-name' }, leg.name),
+            h('span', { class: 'leg-stops' }, stops.join(' → ')))),
+        leg.summaryEl,
+        leg.description ? h('div', { class: 'leg-text' }, richText(leg.description)) : null,
+        leg.notes ? h('div', { class: 'notes leg-text' }, h('div', { class: 'notes-label' }, cfg.notesLabel), richText(leg.notes)) : null,
+        leg.media.length ? h('div', { class: 'leg-text' }, h('button', { class: 'btn small', type: 'button',
+          onclick: () => openLightbox(leg.media.map(classifyMedia).filter((m) => m.kind !== 'link'), 0, leg.name) }, 'Photos & videos')) : null,
+        h('div', { class: 'leg-details', hidden: true }));
     }));
   }
 
-  async function showDrive(i, card, summary) {
-    const d = state.drives[i];
-    if (!state.mapsReady) { summary.hidden = false; summary.textContent = 'The map needs a Google Maps API key first.'; return; }
-    const o = resolveLocation(d.from); const dest = resolveLocation(d.to); const vias = d.via.map(resolveLocation).filter(Boolean);
+  function setLegSummary(leg, res) {
+    leg.summary = resultLine(res);
+    if (leg.summaryEl) { leg.summaryEl.textContent = leg.summary; leg.summaryEl.hidden = false; }
+  }
+
+  async function showLeg(i) {
+    const leg = state.drives[i];
+    const card = document.querySelector(`.leg-card[data-leg="${i}"]`);
+    if (state.activeLeg === i) { clearRoutes(); return; } // tap again to hide
+    const box = card.querySelector('.leg-details');
+    if (!state.mapsReady) { box.hidden = false; box.replaceChildren(h('div', { class: 'route-msg error' }, 'The map needs a Google Maps API key first.')); return; }
+    const markSelected = () => {
+      state.activeLeg = i;
+      card.classList.add('is-selected');
+      card.querySelector('.leg-head').setAttribute('aria-expanded', 'true');
+    };
+    markSelected();
+    const [o, d, ...vias] = await resolveStops([leg.from, leg.to, ...leg.via]);
+    if (state.activeLeg !== i) return;
+    const res = await showComparison({ o, d, vias, box, preferred: legProfile(leg), mapsUrl: leg.mapsUrl, onCleared: markSelected });
+    if (res) setLegSummary(leg, res);
+  }
+
+  async function showWholeTrip() {
+    if (!state.mapsReady) return;
+    const btn = $('#tripWhole');
+    if (btn.classList.contains('is-active')) { clearRoutes(); return; } // tap again to hide
     clearRoutes();
     closeCard();
-    $('#routeResults').replaceChildren();
-    state.activeDriveIdx = i;
-    card.classList.add('is-selected');
-    summary.hidden = false; summary.textContent = 'Calculating…';
-    const mods = {};
-    if (d.avoidTolls) mods.avoidTolls = true;
-    if (d.avoidHighways) mods.avoidHighways = true;
-    try {
-      const res = await computeRoute(o, dest, vias, mods);
-      if (!res) { summary.textContent = 'No driving route found.'; return; }
-      if (state.activeDriveIdx !== i) return;
-      drawRoute('scenic', res.route, SCENIC_COLOR);
-      const path = res.route.path || [];
-      addEndMarkers(o, dest, { start: path[0] && { lat: path[0].lat, lng: path[0].lng }, end: path.length && { lat: path[path.length - 1].lat, lng: path[path.length - 1].lng } });
-      fitRoutes([res]);
-      const toll = tollSummary(res);
-      summary.textContent = `≈ ${fmtDuration(res.route.durationMillis)} · ${fmtDistance(res.route.distanceMeters)}${toll ? ` · ${toll.text}` : ''}`;
-      renderLegend([{ key: 'scenic', color: SCENIC_COLOR, label: d.name, time: fmtDuration(res.route.durationMillis) }]);
-      selectRoute('scenic');
-      if (isMobile()) setSheet(false);
-    } catch (e) {
-      summary.textContent = `Couldn’t calculate this drive. ${e.message || ''}`;
-    }
+    const token = state.routeToken;
+    btn.classList.add('is-active');
+    btn.textContent = 'Calculating…';
+    const legs = state.drives;
+    const stops = await Promise.all(legs.map((leg) => resolveStops([leg.from, leg.to, ...leg.via])));
+    const results = await Promise.all(legs.map((leg, i) => {
+      const [o, d, ...vias] = stops[i];
+      return computeRoute(o, d, vias, legModifiers(leg)).then((res) => ({ res }), (err) => ({ err }));
+    }));
+    if (token !== state.routeToken) return; // something else was chosen meanwhile
+    btn.textContent = 'Hide whole trip';
+    let totalMs = 0; let totalM = 0;
+    results.forEach((r, i) => {
+      if (!r.res) return;
+      drawRoute(`leg-${i}`, r.res.route, legColor(i));
+      setLegSummary(legs[i], r.res);
+      totalMs += r.res.route.durationMillis || 0; totalM += r.res.route.distanceMeters || 0;
+    });
+    // Numbered stops: 1 = where the trip starts, then the end of each drive.
+    results.forEach((r, i) => {
+      const [o, d] = stops[i];
+      const ends = r.res ? pathEnds(r.res.route) : {};
+      if (i === 0) addMarker(o.latLng || ends.start, '1', 'stop', o.label);
+      addMarker(d.latLng || ends.end, String(i + 2), 'stop', d.label);
+    });
+    const drawn = results.filter((r) => r.res);
+    fitRoutes(drawn.map((r) => r.res));
+    const failed = results.length - drawn.length;
+    const total = $('#tripTotal');
+    total.textContent = `${drawn.length} drives · about ${fmtDuration(totalMs)} and ${fmtDistance(totalM)} of driving in total (typical times).`
+      + (failed ? ` ${failed} drive${failed > 1 ? 's' : ''} couldn’t be calculated.` : '');
+    total.hidden = false;
+    renderLegend(legs.map((leg, i) => results[i].res && { key: `leg-${i}`, color: legColor(i), label: leg.day || `Drive ${i + 1}`, time: fmtDuration(results[i].res.route.durationMillis) }).filter(Boolean), 'Whole trip');
+    if (isMobile()) setSheet(false);
   }
 
   /* ═════════════ Panel: tabs, area, mobile sheet ═════════════ */
@@ -1148,6 +1252,7 @@
       setTab(b.dataset.tab);
       if (isMobile() && !sheetOpen()) setSheet(true);
     }));
+    $('#tripWhole').addEventListener('click', () => showWholeTrip());
     $('#routeForm').addEventListener('submit', (e) => { e.preventDefault(); document.activeElement.blur(); planRoute(); });
     $('#swapRoute').addEventListener('click', () => {
       const a = $('#routeFrom'); const b = $('#routeTo');
@@ -1173,6 +1278,7 @@
       console.error(e);
     }
     fillPlaceNames();
+    renderTrip();
     const initial = readHash();
     if (initial.area && state.areaOrder.includes(initial.area)) state.area = initial.area;
     update();
