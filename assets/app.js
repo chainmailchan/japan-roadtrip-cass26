@@ -1185,14 +1185,7 @@
     const handle = $('#sheetHandle');
     handle.addEventListener('click', () => setSheet(!sheetOpen()));
     $('#sheetToggle').addEventListener('click', () => setSheet(!sheetOpen()));
-    let startY = null;
-    handle.addEventListener('touchstart', (e) => { startY = e.touches[0].clientY; }, { passive: true });
-    handle.addEventListener('touchend', (e) => {
-      if (startY == null) return;
-      const dy = e.changedTouches[0].clientY - startY;
-      if (Math.abs(dy) > 30) { e.preventDefault(); setSheet(dy < 0); }
-      startY = null;
-    });
+    initSheetDrag();
     // On phones, keep the visible map above whatever covers its bottom edge (sheet or card),
     // so the pin you tapped and Google's logo stay in view.
     const card = $('#card');
@@ -1208,6 +1201,63 @@
     setPeek();
     new MutationObserver(sync).observe(card, { attributes: true, attributeFilter: ['hidden'] });
     mqMobile.addEventListener('change', sync);
+  }
+
+  // Phones: drag the top of the sheet (bar, title, areas, tabs) up or down, or pull down from the
+  // top of the list, and the sheet follows your finger, then snaps open or closed.
+  function initSheetDrag() {
+    const panel = $('#panel'); const top = $('.panel-top'); const body = $('#panelBody');
+    const probe = h('div', { 'aria-hidden': 'true', style: { position: 'fixed', left: '0', top: '0', width: '1px', height: 'var(--peek)', visibility: 'hidden', 'pointer-events': 'none' } });
+    document.body.append(probe);
+    let d = null;
+
+    const start = (e, fromBody) => {
+      if (!isMobile() || e.touches.length !== 1) { d = null; return; }
+      const t = e.touches[0];
+      d = { fromBody, x: t.clientX, y: t.clientY, active: false, samples: [] };
+    };
+    const move = (e) => {
+      if (!d) return;
+      const t = e.touches[0];
+      const dx = t.clientX - d.x; const dy = t.clientY - d.y;
+      if (!d.active) {
+        if (Math.abs(dy) < 8 || Math.abs(dy) <= Math.abs(dx)) {
+          if (Math.abs(dx) > 8) d = null; // sideways: let the area buttons scroll
+          return;
+        }
+        // In the list, only a pull-down from the very top moves the sheet; otherwise it scrolls.
+        if (d.fromBody && !(sheetOpen() && body.scrollTop <= 0 && dy > 0)) { d = null; return; }
+        d.closed = Math.max(0, panel.offsetHeight - probe.offsetHeight);
+        d.base = sheetOpen() ? 0 : d.closed;
+        d.active = true;
+        panel.style.transition = 'none';
+      }
+      e.preventDefault();
+      d.pos = Math.min(d.closed, Math.max(0, d.base + dy));
+      panel.style.transform = `translateY(${d.pos}px)`;
+      d.samples.push({ y: t.clientY, t: e.timeStamp });
+      if (d.samples.length > 5) d.samples.shift();
+    };
+    const end = (e) => {
+      if (!d) return;
+      const was = d; d = null;
+      if (!was.active) return; // a tap: let it through
+      e.preventDefault(); // no click on whatever the finger lifted over
+      const s = was.samples; const a = s[0]; const b = s[s.length - 1];
+      const v = a && b && b.t > a.t ? (b.y - a.y) / (b.t - a.t) : 0; // px per ms; negative = upwards
+      const open = v < -0.35 ? true : v > 0.35 ? false : was.pos < was.closed / 2;
+      panel.style.transition = '';
+      panel.style.transform = '';
+      setSheet(open);
+    };
+
+    top.addEventListener('touchstart', (e) => start(e, false), { passive: true });
+    body.addEventListener('touchstart', (e) => start(e, true), { passive: true });
+    [top, body].forEach((el) => {
+      el.addEventListener('touchmove', move, { passive: false });
+      el.addEventListener('touchend', end);
+      el.addEventListener('touchcancel', end);
+    });
   }
 
   function initDeviceTip() {
